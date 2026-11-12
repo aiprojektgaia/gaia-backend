@@ -1,0 +1,54 @@
+[project]
+name = "gaia-backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.19.1",
+    "fastapi[standard]>=0.141.1",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.5.2",
+    "psycopg2>=2.9.9",
+    "pytest>=9.0.3",
+    "python-dotenv>=1.2.2",
+    "sqlalchemy>=2.0.36",
+    "sqlmodel>=0.0.22",
+    "ruff>=0.14.0",
+    "dependency-injector>=4.43.0",
+    "psutil>=6.1.1",
+]
+
+[tool.uv]
+# Minimum versions for transitive dependencies that carry known CVEs.
+# See docs/security-fixes-260817.md for the advisory each floor closes.
+constraint-dependencies = [
+    "anyio>=4.11.0",          # not a CVE: 4.6.2 was yanked (mistagged 4.5.2 code)
+    "certifi>=2026.10.19",    # pulled in by httpx/httpcore/requests; fixed in 2026.10.19
+    "click>=8.3.3",           # PYSEC-2026-2132 command injection in click.edit()
+    "h11>=0.16.0",            # CVE-2025-43859 request smuggling (critical)
+    "idna>=3.15",             # GHSA-65pc-fj4g-8rjx
+    "mako>=1.3.12",           # CVE-2026-41205 and 2 more (high)
+    "pygments>=2.20.0",       # GHSA-5239-wwwm-4pmq, CVE-2026-4539
+    "python-multipart>=0.0.31",  # CVE-2026-24486 path traversal + 8 more
+    "starlette>=1.3.1",       # CVE-2025-62727 Range-header DoS + 6 more
+    "urllib3>=2.7.0",         # CVE-2026-21441 decompression bomb + 6 more
+]
+
+[tool.uvicorn]
+app = "app.main:app"
+host = "0.0.0.0"
+port = 8000
+reload = false
+reload-exclude = ["logs/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["app/test"]
+pythonpath = ["."]
+
+[tool.ruff]
+# Allow lines to be as long as 80.
+line-length = 80
+
+[tool.pyright]
+typeCheckingMode = "off"

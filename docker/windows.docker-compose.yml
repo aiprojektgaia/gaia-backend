@@ -1,0 +1,149 @@
+volumes:
+  # Caddy's certificates and, with GAIA_TLS=internal, its local CA.
+  caddy_data:
+  gaia_engine:
+    driver: local
+    driver_opts:
+      type: "none"
+      device: "C:\\gaia\\gaia-engine"
+      o: "bind"
+  gaia_storage:
+    driver: local
+    driver_opts:
+      type: "none"
+      device: "C:\\gaia\\storage"
+      o: "bind"
+  gaia_logs:
+    driver: local
+    driver_opts:
+      type: "none"
+      device: "C:\\gaia\\logs"
+      o: "bind"
+  gaia_db:
+    driver: local
+    driver_opts:
+      type: "none"
+      device: "C:\\gaia\\pgdata"
+      o: "bind"
+  geoserver_data:
+    driver: local
+    driver_opts:
+      type: "none"
+      device: "C:\\gaia\\geoserver\\data\\contents"
+      o: "bind"
+  geoserver_geo:
+    driver: local
+    driver_opts:
+      type: "none"
+      device: "C:\\gaia\\geoserver\\geo"
+      o: "bind"
+
+networks:
+  backend:
+    driver: bridge
+
+services:
+  gaia:
+    depends_on:
+      - db
+    build:
+      dockerfile: Dockerfile
+      context: ../
+      args:
+        progress: plain
+    ports:
+      # Loopback only: plain HTTP never leaves the server. QGIS users connect
+      # through the HTTPS proxy on 8443; this mapping is for admin checks on
+      # the server itself (curl localhost:8000/...).
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - gaia.env
+    volumes:
+      - "gaia_engine:/opt/gaia/engine"
+      - "gaia_storage:/opt/gaia/storage"
+      - "gaia_logs:/opt/gaia/backend/logs"
+      - "../docker/run_migrations.sh:/opt/gaia/backend/run_migrations.sh"
+    networks:
+      - backend
+    command:
+      [
+        "/bin/bash",
+        "-c",
+        "cd /opt/gaia/backend && chmod +x ./run_migrations.sh && echo 'Running migrations...' && ./run_migrations.sh && echo 'Migrations completed, starting application...' && /opt/gaia/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000",
+      ]
+    restart: unless-stopped
+
+  # HTTPS in front of the API. See Caddyfile and proxy.env.template.
+  proxy:
+    image: caddy:2.10-alpine
+    depends_on:
+      - gaia
+    ports:
+      - "8443:8443"
+    env_file:
+      - ./proxy.env
+    volumes:
+      - "./Caddyfile:/etc/caddy/Caddyfile:ro"
+      - "./certs:/etc/caddy/certs:ro"
+      - "caddy_data:/data"
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # Setting up a postgress database.
+  db:
+    image: postgis/postgis
+    ports:
+      # Bound to loopback deliberately - see the note in
+      # linux.docker-compose.yml. The backend uses the "backend" network, not
+      # this mapping; it exists only for host-side admin access.
+      - 127.0.0.1:5432:5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=
+      - POSTGRES_DB=gaia_db
+    volumes:
+      - "gaia_db:/var/lib/postgresql/data"
+    env_file:
+      - ./gaia.env
+    restart: unless-stopped
+    healthcheck:
+      test: "exit 0"
+    networks:
+      - backend
+  # Refuses to let GeoServer start without a real admin password: an empty
+  # one makes the image fall back to its publicly documented default.
+  geoserver-preflight:
+    image: kartoza/geoserver:2.25.2
+    env_file:
+      - ./geoserver.env
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        case "$${GEOSERVER_ADMIN_PASSWORD:-}" in
+        ""|geoserver|admin) echo "Set GEOSERVER_ADMIN_PASSWORD in geoserver.env" >&2; exit 1;;
+        esac;
+        [ "$${#GEOSERVER_ADMIN_PASSWORD}" -ge 12 ] || { echo "GEOSERVER_ADMIN_PASSWORD must be at least 12 characters" >&2; exit 1; }
+    restart: "no"
+
+  geoserver:
+    image: kartoza/geoserver:2.25.2
+    depends_on:
+      geoserver-preflight:
+        condition: service_completed_successfully
+    volumes:
+      - "geoserver_data:/opt/geoserver/data_dir"
+      - "geoserver_geo:/usr/share/geo-files"
+    ports:
+      - "9600:8080"
+    env_file:
+      - ./geoserver.env
+    restart: unless-stopped
+    healthcheck:
+      test: curl --fail -s http://localhost:8080 || exit 1
+      interval: 1m30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - backend

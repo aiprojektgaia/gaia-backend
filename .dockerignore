@@ -1,0 +1,20 @@
+# Nothing secret may enter the build context: anything COPY'd ends up in an
+# image layer that is readable by anyone who can pull or inspect the image.
+.git
+.gitignore
+.venv
+**/__pycache__
+**/*.pyc
+
+# runtime credentials
+.env
+**/.env
+*.env
+**/*.env
+docker/*.env
+!docker/*.env.template
+
+# local data and logs
+logs
+*.tif
+*.gpkg

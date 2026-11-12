@@ -1,0 +1,20 @@
+# Line endings: store text with LF in the repository and check it out with LF
+# on every platform, regardless of each developer's core.autocrlf setting.
+# Shell scripts in particular must stay LF or they fail inside Docker.
+* text=auto eol=lf
+
+# Binary files: never touch
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.tif binary
+*.tiff binary
+*.gpkg binary
+*.ckpt binary
+*.pt binary
+*.pth binary
+*.safetensors binary
+*.npz binary

@@ -1,0 +1,58 @@
+# HTTPS in front of the GAIA API.
+#
+# The API key travels in every request, so the API is only published through
+# this proxy. The backend container itself is reachable on the Docker network
+# and on the server's loopback (127.0.0.1:8000) only.
+#
+# Settings come from proxy.env (see proxy.env.template):
+#   GAIA_SERVER_NAME  the name or IP address QGIS users connect to
+#   GAIA_TLS          "internal" (Caddy's own CA, default) or
+#                     "/etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem"
+{
+	admin off
+	# Only the HTTPS site below; no port-80 redirect listener.
+	auto_https disable_redirects
+	# Workstations trust the root manually; nothing to install in the container.
+	skip_install_trust
+	# Clients send no SNI when connecting to an IP address; serve this name's
+	# certificate then.
+	default_sni {$GAIA_SERVER_NAME}
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 30s
+			# Stalled clients are dropped; long downloads that keep moving are not.
+			idle 2m
+		}
+	}
+}
+
+# Listed twice: the named address makes Caddy issue the certificate for
+# GAIA_SERVER_NAME; the catch-all ":8443" serves requests whatever their Host
+# header, so an upstream proxy that forwards the IP address still works.
+https://{$GAIA_SERVER_NAME}:8443, https://:8443 {
+	tls {$GAIA_TLS:internal}
+
+	request_body {
+		max_size 10MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	# Access log to the container output (docker logs). The API key header
+	# is removed so the shared secret never ends up in a log.
+	log {
+		output stdout
+		format filter {
+			request>headers>X-Api-Key delete
+			request>headers>Authorization delete
+			request>headers>Cookie delete
+		}
+	}
+
+	reverse_proxy gaia:8000
+}
